@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+option go_package = "github.com/einherij/enterprise/raft/raftgrpc/protocol";
+
+package protocol;
+
+// protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative raft.proto
+
+service Follower {
+  rpc SendExecuteCommand (CommandName) returns (Nothing) {}
+  rpc SendHeartBeat (HeartbeatRequest) returns (Nothing) {}
+  rpc SendElectionRequest (ElectionRequest) returns (ElectionResponse) {}
+}
+
+message Nothing {}
+
+message HeartbeatRequest {
+  string leader_address = 1;
+}
+
+message CommandName {
+  string name = 1;
+}
+
+message ElectionResponse {
+  bool vote = 1;
+}
+
+message ElectionRequest {
+  string address = 1;
+  uint64 term = 2;
+}
