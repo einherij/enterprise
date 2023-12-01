@@ -12,7 +12,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 
-	mock_app "github.com/einherij/enterprise/mocks/app"
+	mock_runner "github.com/einherij/enterprise/mocks/runner"
 )
 
 type ApplicationSuite struct {
@@ -21,7 +21,7 @@ type ApplicationSuite struct {
 	app *App
 
 	ctrl       *gomock.Controller
-	mockRunner *mock_app.MockRunner
+	mockRunner *mock_runner.MockRunner
 }
 
 func TestWebApplication(t *testing.T) {
@@ -30,7 +30,7 @@ func TestWebApplication(t *testing.T) {
 
 func (s *ApplicationSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
-	s.mockRunner = mock_app.NewMockRunner(s.ctrl)
+	s.mockRunner = mock_runner.NewMockRunner(s.ctrl)
 	s.app = NewApplication()
 }
 
@@ -52,8 +52,8 @@ func (s *ApplicationSuite) TestRegisterOnShutdown() {
 }
 
 func (s *ApplicationSuite) TestRunAndShutdownBySyscall() {
-	serv1 := mock_app.NewMockRunner(s.ctrl)
-	serv2 := mock_app.NewMockRunner(s.ctrl)
+	serv1 := mock_runner.NewMockRunner(s.ctrl)
+	serv2 := mock_runner.NewMockRunner(s.ctrl)
 	s.app.RegisterRunner(serv1)
 	s.app.RegisterRunner(serv2)
 	serv1.EXPECT().Run(gomock.Any())
