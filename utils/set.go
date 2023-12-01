@@ -2,27 +2,27 @@ package utils
 
 type Set[data comparable] map[data]struct{}
 
-func NewSet[dataType comparable]() Set[dataType] {
-	return Set[dataType]{}
+func NewSet[T comparable]() Set[T] {
+	return Set[T]{}
 }
 
-func (s Set[dataType]) Add(data ...dataType) {
+func (s Set[T]) Add(data ...T) {
 	for _, d := range data {
 		s[d] = struct{}{}
 	}
 }
 
-func (s Set[dataType]) Delete(data dataType) {
+func (s Set[T]) Delete(data T) {
 	delete(s, data)
 }
 
-func (s Set[dataType]) Exists(data dataType) bool {
+func (s Set[T]) Exists(data T) bool {
 	_, ok := s[data]
 	return ok
 }
 
-func (s Set[dataType]) Values() []dataType {
-	var values []dataType
+func (s Set[T]) Values() []T {
+	var values []T
 	for value := range s {
 		values = append(values, value)
 	}

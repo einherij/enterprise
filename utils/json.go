@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	json "github.com/json-iterator/go"
 )
 
 type Diff struct {
@@ -31,10 +29,10 @@ func CompareJSON(leftJSON, rightJSON string) (diff Diffs, err error) {
 		rightContent any
 	)
 	if err := json.Unmarshal([]byte(leftJSON), &leftContent); err != nil {
-		return nil, fmt.Errorf("error unmarshalling first json file: %w", err)
+		return nil, fmt.Errorf("error unmarshaling first json file: %w", err)
 	}
 	if err := json.Unmarshal([]byte(rightJSON), &rightContent); err != nil {
-		return nil, fmt.Errorf("error unmarshalling second json file: %w", err)
+		return nil, fmt.Errorf("error unmarshaling second json file: %w", err)
 	}
 
 	diff = compare(leftContent, rightContent)

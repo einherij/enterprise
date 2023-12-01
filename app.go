@@ -38,9 +38,10 @@ func (app *App) RegisterOnShutdown(f func()) {
 
 func (app *App) Run() {
 	var (
-		wg          sync.WaitGroup
-		ctx, cancel = signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+		wg     sync.WaitGroup
+		ctx, _ = signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	)
+	logrus.Info("starting application")
 	for _, runnerService := range app.runners {
 		serviceRunner := runnerService
 		wg.Add(1)
@@ -51,7 +52,6 @@ func (app *App) Run() {
 	}
 
 	<-ctx.Done()
-	cancel()
 	logrus.Info("shutting down application")
 	wg.Wait()
 }

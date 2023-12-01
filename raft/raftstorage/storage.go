@@ -4,14 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/einherij/enterprise/utils"
 	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/sirupsen/logrus"
 
-	app "github.com/einherij/enterprise"
+	"github.com/einherij/enterprise/utils"
 )
 
 const (
@@ -24,7 +23,6 @@ const (
 type Storage interface {
 	GetMyAddress() string
 	GetReplicas() ([]string, error)
-	app.Runner
 }
 
 type ReplicaStorage struct {
@@ -32,7 +30,6 @@ type ReplicaStorage struct {
 	serviceName string
 	redisClient *redis.Client
 	logger      *logrus.Logger
-	app.Runner
 }
 
 func NewReplicaStorage(myAddress string, serviceName string, redisClient *redis.Client) *ReplicaStorage {
@@ -78,7 +75,7 @@ func (rs *ReplicaStorage) makeKey(address string) string {
 	return strings.Join([]string{storagePrefix, rs.serviceName, address}, "_")
 }
 
-func (rs *ReplicaStorage) run(ctx context.Context) {
+func (rs *ReplicaStorage) Run(ctx context.Context) {
 	timer := time.NewTimer(0)
 	for {
 		select {
@@ -97,14 +94,12 @@ func (rs *ReplicaStorage) run(ctx context.Context) {
 type dummyStorage struct {
 	myAddress string
 	addresses []string
-	app.Runner
 }
 
 func NewDummyStorage(myAddress string, allAddresses ...string) Storage {
 	return &dummyStorage{
 		addresses: allAddresses,
 		myAddress: myAddress,
-		Runner:    app.NewRunner("dummy", func(_ context.Context) {}),
 	}
 }
 func (ds *dummyStorage) GetMyAddress() string {
@@ -112,4 +107,7 @@ func (ds *dummyStorage) GetMyAddress() string {
 }
 func (ds *dummyStorage) GetReplicas() ([]string, error) {
 	return ds.addresses, nil
+}
+func Run(_ context.Context) {
+
 }

@@ -3,8 +3,10 @@ package utils
 import (
 	"strconv"
 
-	json "github.com/json-iterator/go"
+	jsoniter "github.com/json-iterator/go"
 )
+
+var json = jsoniter.Config{EscapeHTML: false}.Froze()
 
 const (
 	OnePercent Percent = 0.01

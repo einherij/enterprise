@@ -20,18 +20,18 @@ func CloneRequestBody(r *http.Request) (body string) {
 		return ""
 	}
 
+	if r.GetBody == nil && r.Body == nil {
+		return ""
+	}
+
 	var bodyRC io.ReadCloser
-	switch {
-	case r.GetBody != nil:
+	if r.GetBody != nil {
 		if rBody, err := r.GetBody(); err == nil {
 			bodyRC = rBody
-			break
 		}
-		fallthrough
-	case r.Body != nil:
+	}
+	if r.Body != nil {
 		bodyRC = r.Body
-	default:
-		return ""
 	}
 
 	// read body
@@ -58,11 +58,14 @@ func CloneResponseBody(r *http.Response) (body string) {
 	if r == nil || r.Body == nil {
 		return ""
 	}
-	bodyContent, err := io.ReadAll(r.Body)
+	var respBody = r.Body
+	bodyContent, err := io.ReadAll(respBody)
 	if err != nil {
 		logrus.Warnf("error reading response body: %v", err)
 	}
-	if err := r.Body.Close(); err != nil {
+	r.Body = io.NopCloser(bytes.NewReader(bodyContent))
+
+	if err := respBody.Close(); err != nil {
 		logrus.Warnf("error closing response body: %v", err)
 	}
 	if r.Header.Get(ContentEncodingHeader) == ContentEncodingGZIP {
@@ -70,7 +73,7 @@ func CloneResponseBody(r *http.Response) (body string) {
 			logrus.Warnf("ungzip response body error: %v", err)
 		}
 	}
-	r.Body = io.NopCloser(bytes.NewReader(bodyContent))
+
 	return string(bodyContent)
 }
 
@@ -135,8 +138,7 @@ func FillEmptyIP(ipv4, ipv6 string) (string, string) {
 }
 
 const (
-	accessControlHeader = "Access-Control-Allow-Origin"
-	contentTypeHeader   = "Content-Type"
+	contentTypeHeader = "Content-Type"
 )
 
 type ContentType string
@@ -146,10 +148,6 @@ const (
 	ContentTypeTextHTML        ContentType = "text/html"
 )
 
-func SetCorsHeader(w http.ResponseWriter) {
-	w.Header().Set(accessControlHeader, "*")
-}
-
 func SetContentTypeHeader(w http.ResponseWriter, contentType ContentType) {
 	w.Header().Set(contentTypeHeader, string(contentType))
 }
@@ -157,4 +155,11 @@ func SetContentTypeHeader(w http.ResponseWriter, contentType ContentType) {
 func SetCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+}
+
+func WrapForCORS(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		SetCORS(w)
+		handler.ServeHTTP(w, r)
+	})
 }

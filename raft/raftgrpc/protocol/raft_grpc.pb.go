@@ -18,8 +18,8 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type FollowerClient interface {
-	SendExecuteCommand(ctx context.Context, in *CommandName, opts ...grpc.CallOption) (*Nothing, error)
-	SendHeartBeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*Nothing, error)
+	SendExecuteCommand(ctx context.Context, in *Command, opts ...grpc.CallOption) (*Nothing, error)
+	SendHeartBeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 	SendElectionRequest(ctx context.Context, in *ElectionRequest, opts ...grpc.CallOption) (*ElectionResponse, error)
 }
 
@@ -31,7 +31,7 @@ func NewFollowerClient(cc grpc.ClientConnInterface) FollowerClient {
 	return &followerClient{cc}
 }
 
-func (c *followerClient) SendExecuteCommand(ctx context.Context, in *CommandName, opts ...grpc.CallOption) (*Nothing, error) {
+func (c *followerClient) SendExecuteCommand(ctx context.Context, in *Command, opts ...grpc.CallOption) (*Nothing, error) {
 	out := new(Nothing)
 	err := c.cc.Invoke(ctx, "/protocol.Follower/SendExecuteCommand", in, out, opts...)
 	if err != nil {
@@ -40,8 +40,8 @@ func (c *followerClient) SendExecuteCommand(ctx context.Context, in *CommandName
 	return out, nil
 }
 
-func (c *followerClient) SendHeartBeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*Nothing, error) {
-	out := new(Nothing)
+func (c *followerClient) SendHeartBeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error) {
+	out := new(HeartbeatResponse)
 	err := c.cc.Invoke(ctx, "/protocol.Follower/SendHeartBeat", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -62,8 +62,8 @@ func (c *followerClient) SendElectionRequest(ctx context.Context, in *ElectionRe
 // All implementations must embed UnimplementedFollowerServer
 // for forward compatibility
 type FollowerServer interface {
-	SendExecuteCommand(context.Context, *CommandName) (*Nothing, error)
-	SendHeartBeat(context.Context, *HeartbeatRequest) (*Nothing, error)
+	SendExecuteCommand(context.Context, *Command) (*Nothing, error)
+	SendHeartBeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	SendElectionRequest(context.Context, *ElectionRequest) (*ElectionResponse, error)
 	mustEmbedUnimplementedFollowerServer()
 }
@@ -72,10 +72,10 @@ type FollowerServer interface {
 type UnimplementedFollowerServer struct {
 }
 
-func (UnimplementedFollowerServer) SendExecuteCommand(context.Context, *CommandName) (*Nothing, error) {
+func (UnimplementedFollowerServer) SendExecuteCommand(context.Context, *Command) (*Nothing, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendExecuteCommand not implemented")
 }
-func (UnimplementedFollowerServer) SendHeartBeat(context.Context, *HeartbeatRequest) (*Nothing, error) {
+func (UnimplementedFollowerServer) SendHeartBeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendHeartBeat not implemented")
 }
 func (UnimplementedFollowerServer) SendElectionRequest(context.Context, *ElectionRequest) (*ElectionResponse, error) {
@@ -95,7 +95,7 @@ func RegisterFollowerServer(s grpc.ServiceRegistrar, srv FollowerServer) {
 }
 
 func _Follower_SendExecuteCommand_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CommandName)
+	in := new(Command)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func _Follower_SendExecuteCommand_Handler(srv interface{}, ctx context.Context, 
 		FullMethod: "/protocol.Follower/SendExecuteCommand",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FollowerServer).SendExecuteCommand(ctx, req.(*CommandName))
+		return srv.(FollowerServer).SendExecuteCommand(ctx, req.(*Command))
 	}
 	return interceptor(ctx, in, info, handler)
 }

@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	waitFollowerStateTimeout = 10 * time.Millisecond
+	waitFollowerStateTimeout = 20 * time.Millisecond
 )
 
 type State uint
@@ -49,7 +49,7 @@ type ReplicaServer struct {
 	protocol.UnimplementedFollowerServer
 }
 
-type Command func(ctx context.Context, myAddress string, myState State, replicaCount int) error
+type Command func(ctx context.Context, myAddress string, myState State, replicaCount int, sharedData []byte) error
 
 func NewReplicaServer(storage raftstorage.Storage) *ReplicaServer {
 	return &ReplicaServer{
@@ -66,29 +66,34 @@ func (rs *ReplicaServer) AddCommand(commandName string, command Command) {
 	rs.commands[commandName] = command
 }
 
-func (rs *ReplicaServer) SendExecuteCommand(ctx context.Context, command *protocol.CommandName) (*protocol.Nothing, error) {
+func (rs *ReplicaServer) SendExecuteCommand(ctx context.Context, command *protocol.Command) (*protocol.Nothing, error) {
 	replicas, err := rs.storage.GetReplicas()
 	if err != nil {
 		return nil, fmt.Errorf("error getting replicas: %w", err)
 	}
 	rs.commandsMux.RLock()
 	defer rs.commandsMux.RUnlock()
-	err = rs.commands[command.GetName()](ctx, rs.storage.GetMyAddress(), State(rs.state.Load()), len(replicas))
+	err = rs.commands[command.GetName()](ctx, rs.storage.GetMyAddress(), State(rs.state.Load()), len(replicas), command.GetSharedData())
 	if err != nil {
 		return nil, fmt.Errorf("error executing command: %w", err)
 	}
 	return &protocol.Nothing{}, nil
 }
 
-func (rs *ReplicaServer) SendHeartBeat(ctx context.Context, heartbeatRequest *protocol.HeartbeatRequest) (*protocol.Nothing, error) {
-	select {
-	case rs.heartbeats <- heartbeatRequest.GetLeaderAddress():
-	case <-time.After(waitFollowerStateTimeout):
-		return nil, errors.New("replica is not in follower state")
-	case <-ctx.Done():
-		return nil, ctx.Err()
+func (rs *ReplicaServer) SendHeartBeat(ctx context.Context, heartbeatRequest *protocol.HeartbeatRequest) (*protocol.HeartbeatResponse, error) {
+
+	if requestTerm := heartbeatRequest.GetTerm(); requestTerm >= rs.term.Load() {
+		rs.term.Store(requestTerm)
+		select {
+		case rs.heartbeats <- heartbeatRequest.GetLeaderAddress():
+		case <-time.After(waitFollowerStateTimeout):
+			return nil, errors.New("replica is not in follower state")
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return &protocol.HeartbeatResponse{Ok: true}, nil
 	}
-	return &protocol.Nothing{}, nil
+	return &protocol.HeartbeatResponse{Ok: false}, nil
 }
 
 func (rs *ReplicaServer) SendElectionRequest(ctx context.Context, request *protocol.ElectionRequest) (*protocol.ElectionResponse, error) {

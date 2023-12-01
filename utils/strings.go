@@ -7,32 +7,6 @@ import (
 	"strings"
 )
 
-func JoinQuoted(lines []string, quote, separator string) string {
-	var joined strings.Builder
-	for i, line := range lines {
-		if i > 0 {
-			joined.WriteString(separator)
-		}
-		joined.WriteString(quote)
-		joined.WriteString(line)
-		joined.WriteString(quote)
-	}
-	return joined.String()
-}
-
-func JoinQuotedInt(lines []int, quote, separator string) string {
-	var joined strings.Builder
-	for i, line := range lines {
-		if i > 0 {
-			joined.WriteString(separator)
-		}
-		joined.WriteString(quote)
-		joined.WriteString(strconv.Itoa(line))
-		joined.WriteString(quote)
-	}
-	return joined.String()
-}
-
 func FuncName() string {
 	pc := make([]uintptr, 15)
 	n := runtime.Callers(2, pc)
@@ -65,6 +39,32 @@ func ToUnderscoreACII(s string) (underscored string) {
 	return strings.ToLower(underscored)
 }
 
+func JoinQuoted(lines []string, quote, separator string) string {
+	var joined strings.Builder
+	for i, line := range lines {
+		if i > 0 {
+			joined.WriteString(separator)
+		}
+		joined.WriteString(quote)
+		joined.WriteString(line)
+		joined.WriteString(quote)
+	}
+	return joined.String()
+}
+
+func JoinQuotedInt(lines []int, quote, separator string) string {
+	var joined strings.Builder
+	for i, line := range lines {
+		if i > 0 {
+			joined.WriteString(separator)
+		}
+		joined.WriteString(quote)
+		joined.WriteString(strconv.Itoa(line))
+		joined.WriteString(quote)
+	}
+	return joined.String()
+}
+
 func JoinParams(first, second string) string {
 	return first + "#" + second
 }
@@ -94,4 +94,15 @@ func EscapeChars(str string, chars map[rune]struct{}) string {
 		escapedStr.WriteRune(r)
 	}
 	return escapedStr.String()
+}
+
+func EscapeJSONString(str string, level int) string {
+	for i := 0; i < level; i++ {
+		b, _ := json.Marshal(struct {
+			S string
+		}{S: str})
+		str = strings.TrimPrefix(string(b), `{"S":"`)
+		str = strings.TrimSuffix(str, `"}`)
+	}
+	return str
 }

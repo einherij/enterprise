@@ -4,8 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/einherij/enterprise/raft/raftgrpc/protocol"
-	"github.com/einherij/enterprise/raft/raftstorage"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -17,29 +15,39 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/einherij/enterprise/raft/raftgrpc"
+	"github.com/einherij/enterprise/raft/raftgrpc/protocol"
+	"github.com/einherij/enterprise/raft/raftstorage"
 )
 
 var _ = ReplicaInterface(&Replica{})
 
 type ReplicaInterface interface {
 	RegisterCommand(commandName string, command raftgrpc.Command)
-	ExecuteCommand(commandName string) error
+	ExecuteCommand(commandName string, sharedData []byte) error
 }
 
 const (
-	grpcConnectTimeout = time.Second
-	grpcCommandTimeout = 10 * time.Second
+	grpcCommandTimeout = time.Minute     // rise this, if it's not enough time to execute command
+	grpcConnectTimeout = 5 * time.Second // rise this, if not enough time to communicate between replicas
+
+	// don't change options below if you're not sure
+
+	grpcMaxExecutionDuration = grpcConnectTimeout * 15 / 10 // +50% to finish grpc command execution
+
+	appendEntries = grpcMaxExecutionDuration * 2 // to finish grpc command execution and don't do it to often
+
+	electionFrom = grpcMaxExecutionDuration * 3 // so it won't become candidate and will wait for append entries
+	electionTo   = grpcMaxExecutionDuration * 6 // enough time difference between candidates' elections
 )
 
 // time until follower becomes a candidate
 func electionTimeout() time.Duration {
-	return timeoutInRange(1000*time.Millisecond, 1500*time.Millisecond)
+	return timeoutInRange(electionFrom, electionTo)
 }
 
 // time between heartbeats
 func appendEntriesTimeout() time.Duration {
-	return 500 * time.Millisecond
-	//return timeoutInRange(500*time.Millisecond, 800*time.Millisecond)
+	return appendEntries
 }
 
 func timeoutInRange(min, max time.Duration) time.Duration {
@@ -52,8 +60,6 @@ func timeoutInRange(min, max time.Duration) time.Duration {
 
 // Replica participates in elections, if it becomes a leader sends commands to follower servers
 type Replica struct {
-	currentLeader string
-
 	log *logrus.Logger
 
 	server  *raftgrpc.ReplicaServer
@@ -71,7 +77,9 @@ func NewReplica(storage raftstorage.Storage, server *raftgrpc.ReplicaServer, log
 
 func (r *Replica) Run(ctx context.Context) {
 	electionTimer := time.NewTimer(electionTimeout())
-	appendEntriesTimer := time.NewTimer(appendEntriesTimeout())
+	appendEntriesTimer := time.NewTimer(0)
+	<-appendEntriesTimer.C               // need empty timer
+	r.server.SetState(raftgrpc.Follower) // default state
 
 mainLoop:
 	for {
@@ -83,16 +91,13 @@ mainLoop:
 			// if there is election request change state to candidate and send vote to server, that requested
 			select {
 			case votedFor := <-r.server.IncomingElectionRequests():
-				r.currentLeader = votedFor
-				r.log.Debugf("%s accepted election request from: %s, term: %d", r.storage.GetMyAddress(), r.currentLeader, r.server.GetTerm())
+				r.log.Debugf("%s accepted election request from: %s, term: %d", r.storage.GetMyAddress(), votedFor, r.server.GetTerm())
 
 				electionTimer.Reset(electionTimeout())
 			case leaderAddress := <-r.server.IncomingHeartbeats():
-				r.log.Debugf("%s received heartbeat from %s", r.storage.GetMyAddress(), r.currentLeader)
+				r.log.Debugf("%s received heartbeat from %s, term: %d", r.storage.GetMyAddress(), leaderAddress, r.server.GetTerm())
 
-				if leaderAddress == r.currentLeader {
-					electionTimer.Reset(electionTimeout())
-				}
+				electionTimer.Reset(electionTimeout())
 			case <-electionTimer.C:
 				r.server.SetState(raftgrpc.Candidate)
 				r.log.Debugf("%s state is changed to %v", r.storage.GetMyAddress(), r.server.GetState())
@@ -113,13 +118,19 @@ mainLoop:
 			)
 			replicas, err := r.storage.GetReplicas()
 			if err != nil {
+				r.log.Errorf("error getting replicas: %v", err)
 				r.server.SetState(raftgrpc.Follower)
+				r.log.Debugf("%s state is changed to %v", r.storage.GetMyAddress(), r.server.GetState())
+				electionTimer.Reset(electionTimeout())
 				continue mainLoop
 			}
 
 			votesAmount.Store(1) // self vote
 			for _, replica := range replicas {
 				replica := replica
+				if replica == myAddress {
+					continue
+				}
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
@@ -130,11 +141,13 @@ mainLoop:
 			}
 			wg.Wait()
 			r.log.Debugf("%s sending election requests duration: %v", r.storage.GetMyAddress(), time.Now().Sub(started))
-			r.log.Debugf("%s voted %d followers", r.storage.GetMyAddress(), votesAmount.Load())
+			r.log.Debugf("%s voted %d followers from %d", r.storage.GetMyAddress(), votesAmount.Load(), len(replicas))
 			if float32(votesAmount.Load()) > float32(len(replicas))/2. {
 				r.server.SetState(raftgrpc.Leader)
+				appendEntriesTimer.Reset(0)
 			} else {
 				r.server.SetState(raftgrpc.Follower)
+				electionTimer.Reset(electionTimeout())
 			}
 			r.log.Debugf("%s state is changed to %v", r.storage.GetMyAddress(), r.server.GetState())
 		case raftgrpc.Leader:
@@ -144,22 +157,27 @@ mainLoop:
 			case <-appendEntriesTimer.C:
 				var (
 					started             = time.Now()
+					myAddress           = r.storage.GetMyAddress()
 					wg                  sync.WaitGroup
 					heartbeatsResponded atomic.Int32
 				)
 				replicas, err := r.storage.GetReplicas()
 				if err != nil {
 					r.server.SetState(raftgrpc.Follower)
+					electionTimer.Reset(electionTimeout())
 					continue mainLoop
 				}
 
 				heartbeatsResponded.Store(1) // self heartbeat
 				for _, follower := range replicas {
 					follower := follower
+					if follower == myAddress {
+						continue
+					}
 					wg.Add(1)
 					go func() {
 						defer wg.Done()
-						if ok := r.sendHeartBeat(follower, r.storage.GetMyAddress()); ok {
+						if ok := r.sendHeartBeat(follower, r.storage.GetMyAddress(), r.server.GetTerm()); ok {
 							heartbeatsResponded.Add(1) // replica vote
 						}
 					}()
@@ -170,6 +188,7 @@ mainLoop:
 				if float32(heartbeatsResponded.Load()) <= float32(len(replicas))/2. {
 					r.server.SetState(raftgrpc.Follower)
 					r.log.Debugf(r.storage.GetMyAddress(), "state is changed to", r.server.GetState())
+					electionTimer.Reset(electionTimeout())
 				}
 
 				appendEntriesTimer.Reset(appendEntriesTimeout())
@@ -184,7 +203,7 @@ func (r *Replica) RegisterCommand(commandName string, command raftgrpc.Command) 
 	r.server.AddCommand(commandName, command)
 }
 
-func (r *Replica) ExecuteCommand(commandName string) error {
+func (r *Replica) ExecuteCommand(commandName string, sharedData []byte) error {
 	if r.server.GetState() != raftgrpc.Leader {
 		return nil
 	}
@@ -193,16 +212,16 @@ func (r *Replica) ExecuteCommand(commandName string) error {
 		return fmt.Errorf("error getting replilcas: %w", err)
 	}
 	for _, replica := range replicas {
-		if ok := r.sendExecuteCommand(replica, commandName); !ok {
+		if ok := r.sendExecuteCommand(replica, commandName, sharedData); !ok {
 			return fmt.Errorf("%s replica %s didn't execute the command %s", r.storage.GetMyAddress(), replica, commandName)
 		}
 	}
 	return nil
 }
 
-func (r *Replica) sendExecuteCommand(toReplica, commandName string) (done bool) {
+func (r *Replica) sendExecuteCommand(toReplica, commandName string, sharedData []byte) (done bool) {
 	var err = grpcSingleCall(toReplica, func(ctx context.Context, client protocol.FollowerClient) error {
-		_, err := client.SendExecuteCommand(ctx, &protocol.CommandName{Name: commandName})
+		_, err := client.SendExecuteCommand(ctx, &protocol.Command{Name: commandName, SharedData: sharedData})
 		return err
 	})
 
@@ -210,7 +229,7 @@ func (r *Replica) sendExecuteCommand(toReplica, commandName string) (done bool) 
 }
 
 func (r *Replica) sendElectionRequest(toReplica, myAddress string, term uint64) (voted bool) {
-	_ = grpcSingleCall(toReplica, func(ctx context.Context, client protocol.FollowerClient) error {
+	err := grpcSingleCall(toReplica, func(ctx context.Context, client protocol.FollowerClient) error {
 		response, err := client.SendElectionRequest(ctx, &protocol.ElectionRequest{
 			Address: myAddress,
 			Term:    term,
@@ -218,17 +237,25 @@ func (r *Replica) sendElectionRequest(toReplica, myAddress string, term uint64) 
 		voted = response.GetVote()
 		return err
 	})
+	if err != nil {
+		r.log.Errorf("error sending grpc single call: %v", err)
+	}
 	return voted
 }
 
-func (r *Replica) sendHeartBeat(toReplica, myAddress string) (ok bool) {
+func (r *Replica) sendHeartBeat(toReplica, myAddress string, term uint64) (ok bool) {
 	var err = grpcSingleCall(toReplica, func(ctx context.Context, client protocol.FollowerClient) error {
-		_, err := client.SendHeartBeat(ctx, &protocol.HeartbeatRequest{
+		response, err := client.SendHeartBeat(ctx, &protocol.HeartbeatRequest{
 			LeaderAddress: myAddress,
+			Term:          term,
 		})
+		ok = response.GetOk()
 		return err
 	})
-	return err == nil
+	if err != nil {
+		r.log.Errorf("error sending grpc single call: %v", err)
+	}
+	return ok
 }
 
 type singleCallFunc func(ctx context.Context, client protocol.FollowerClient) error

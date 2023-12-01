@@ -4,11 +4,9 @@ option go_package = "github.com/einherij/enterprise/raft/raftgrpc/protocol";
 
 package protocol;
 
-// protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative raft.proto
-
 service Follower {
-  rpc SendExecuteCommand (CommandName) returns (Nothing) {}
-  rpc SendHeartBeat (HeartbeatRequest) returns (Nothing) {}
+  rpc SendExecuteCommand (Command) returns (Nothing) {}
+  rpc SendHeartBeat (HeartbeatRequest) returns (HeartbeatResponse) {}
   rpc SendElectionRequest (ElectionRequest) returns (ElectionResponse) {}
 }
 
@@ -16,10 +14,16 @@ message Nothing {}
 
 message HeartbeatRequest {
   string leader_address = 1;
+  uint64 term = 2;
 }
 
-message CommandName {
+message HeartbeatResponse {
+  bool ok = 1;
+}
+
+message Command {
   string name = 1;
+  bytes shared_data = 2;
 }
 
 message ElectionResponse {
