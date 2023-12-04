@@ -99,7 +99,7 @@ func Test_CloneResponseBody_Gzip(t *testing.T) {
 	a.NoError(gzWriter.Close())
 	res := &http.Response{Status: "200 OK", StatusCode: 200, Body: ioutil.NopCloser(&body)}
 	res.Header = http.Header{
-		ContentEncodingHeader: []string{ContentEncodingGZIP},
+		contentEncodingHeader: []string{contentEncodingGZIP},
 	}
 	bodyContent := CloneResponseBody(res)
 	a.Equal("multilne\nresponse\nbody\ncontent", bodyContent)
@@ -233,21 +233,21 @@ func Test_FillEmptyIP(t *testing.T) {
 			name:    "EmptyIP",
 			ipv4:    "",
 			ipv6:    "",
-			resIPv4: DefaultIPv4,
-			resIPv6: DefaultIPv6,
+			resIPv4: ZeroIPv4,
+			resIPv6: ZeroIPv6,
 		},
 		{
 			name:    "IPv4",
 			ipv4:    "192.168.1.1",
 			ipv6:    "",
 			resIPv4: "192.168.1.1",
-			resIPv6: DefaultIPv6,
+			resIPv6: ZeroIPv6,
 		},
 		{
 			name:    "IPv6",
 			ipv4:    "",
 			ipv6:    "1111:1111:1111:1111:1111:1111:1111:1111",
-			resIPv4: DefaultIPv4,
+			resIPv4: ZeroIPv4,
 			resIPv6: "1111:1111:1111:1111:1111:1111:1111:1111",
 		},
 	} {

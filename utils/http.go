@@ -3,17 +3,64 @@ package utils
 import (
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 
+	"github.com/avct/uasurfer"
 	"github.com/sirupsen/logrus"
 )
 
 const (
-	ContentEncodingHeader = "Content-Encoding"
-	ContentEncodingGZIP   = "gzip"
+	contentEncodingHeader = "Content-Encoding"
+	contentEncodingGZIP   = "gzip"
+
+	acceptLanguageHeader = "Accept-Language"
+
+	xForwardedForHeader = "X-Forwarded-For"
+
+	contentTypeHeader = "Content-Type"
 )
+
+type Request struct {
+	Domain          string
+	PageURL         string
+	OS              string
+	DeviceType      string
+	BrowserLanguage string
+	UA              string
+	IP              string
+}
+
+func ParseGetRequest(httpReq *http.Request) (req *Request, err error) {
+	req = new(Request)
+
+	if refStr := httpReq.Referer(); refStr != "" {
+		refURL, err := url.Parse(refStr)
+		if err != nil {
+			return req, fmt.Errorf("error parsing referer: %w", err)
+		}
+		req.PageURL = fmt.Sprintf("%s://%s%s", refURL.Scheme, refURL.Host, refURL.Path)
+		req.Domain = refURL.Hostname()
+	}
+
+	if uaStr := httpReq.UserAgent(); uaStr != "" {
+		ua := uasurfer.Parse(uaStr)
+		req.UA = uaStr
+		req.OS = ua.OS.Name.String()
+		req.DeviceType = ua.DeviceType.String()
+	}
+
+	if langStr := httpReq.Header.Get(acceptLanguageHeader); len(langStr) >= 2 {
+		req.BrowserLanguage = langStr[:2] // cut two-letter language
+	}
+
+	req.IP = GetRequestIP(httpReq)
+
+	return req, nil
+}
 
 func CloneRequestBody(r *http.Request) (body string) {
 	if r == nil {
@@ -68,7 +115,7 @@ func CloneResponseBody(r *http.Response) (body string) {
 	if err := respBody.Close(); err != nil {
 		logrus.Warnf("error closing response body: %v", err)
 	}
-	if r.Header.Get(ContentEncodingHeader) == ContentEncodingGZIP {
+	if r.Header.Get(contentEncodingHeader) == contentEncodingGZIP {
 		if bodyContent, err = UnGzipBody(bodyContent); err != nil {
 			logrus.Warnf("ungzip response body error: %v", err)
 		}
@@ -88,8 +135,6 @@ func UnGzipBody(bodyContent []byte) ([]byte, error) {
 	}
 	return gzipContent, nil
 }
-
-const xForwardedForHeader = "X-Forwarded-For"
 
 func GetRequestIP(r *http.Request) (requestIP string) {
 	if ip := r.Header.Get(xForwardedForHeader); ip != "" {
@@ -123,23 +168,19 @@ func JoinIPVersions(ipv4, ipv6 string) (ip string) {
 }
 
 const (
-	DefaultIPv4 = "0.0.0.0"
-	DefaultIPv6 = "0000:0000:0000:0000:0000:0000:0000:0000"
+	ZeroIPv4 = "0.0.0.0"
+	ZeroIPv6 = "0000:0000:0000:0000:0000:0000:0000:0000"
 )
 
 func FillEmptyIP(ipv4, ipv6 string) (string, string) {
 	if net.ParseIP(ipv4) == nil {
-		ipv4 = DefaultIPv4
+		ipv4 = ZeroIPv4
 	}
 	if net.ParseIP(ipv6) == nil {
-		ipv6 = DefaultIPv6
+		ipv6 = ZeroIPv6
 	}
 	return ipv4, ipv6
 }
-
-const (
-	contentTypeHeader = "Content-Type"
-)
 
 type ContentType string
 
@@ -148,6 +189,13 @@ const (
 	ContentTypeTextHTML        ContentType = "text/html"
 )
 
+func WrapForCORS(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		SetCORS(w)
+		handler.ServeHTTP(w, r)
+	})
+}
+
 func SetContentTypeHeader(w http.ResponseWriter, contentType ContentType) {
 	w.Header().Set(contentTypeHeader, string(contentType))
 }
@@ -155,11 +203,4 @@ func SetContentTypeHeader(w http.ResponseWriter, contentType ContentType) {
 func SetCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-}
-
-func WrapForCORS(handler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		SetCORS(w)
-		handler.ServeHTTP(w, r)
-	})
 }

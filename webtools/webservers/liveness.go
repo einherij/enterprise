@@ -1,19 +1,19 @@
-package servers
+package webservers
 
 import (
 	"fmt"
 	"net/http"
 	"strings"
 
-	"github.com/einherij/enterprise/httputils"
+	"github.com/einherij/enterprise/webtools"
 )
 
 type LivenessConfig struct {
 	LivenessPort string `mapstructure:"liveness_port"`
 }
 
-func NewLivenessServer(cfg LivenessConfig) (*httputils.Server, error) {
-	srv, err := httputils.NewServer(
+func NewLivenessServer(cfg LivenessConfig) (*webtools.Server, error) {
+	srv, err := webtools.NewServer(
 		"liveness_probe",
 		cfg.LivenessPort,
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

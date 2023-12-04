@@ -1,18 +1,18 @@
-package servers
+package webservers
 
 import (
 	"net/http"
 	"net/http/pprof"
 
-	"github.com/einherij/enterprise/httputils"
+	"github.com/einherij/enterprise/webtools"
 )
 
 type PProfConfig struct {
 	Port string `mapstructure:"port"`
 }
 
-func NewPProfServer(cfg PProfConfig) (*httputils.Server, error) {
-	return httputils.NewServer("pprof", cfg.Port, newPProfMux())
+func NewPProfServer(cfg PProfConfig) (*webtools.Server, error) {
+	return webtools.NewServer("pprof", cfg.Port, newPProfMux())
 }
 
 func newPProfMux() *http.ServeMux {

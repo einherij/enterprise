@@ -1,4 +1,4 @@
-package httputils
+package webtools
 
 import (
 	"context"

@@ -1,4 +1,4 @@
-package servers
+package webservers
 
 import (
 	"errors"
@@ -6,17 +6,16 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/einherij/enterprise/webtools"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-
-	"github.com/einherij/enterprise/httputils"
 )
 
 type MetricsConfig struct {
 	Port string `mapstructure:"port"`
 }
 
-func NewMetricServer(cfg MetricsConfig) (*httputils.Server, error) {
+func NewMetricServer(cfg MetricsConfig) (*webtools.Server, error) {
 	promHTTPHandler := promhttp.InstrumentMetricHandler(
 		prometheus.DefaultRegisterer, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 			ErrorLog: logrus.StandardLogger().WithError(errors.New("prometheus handler error")),
@@ -25,5 +24,5 @@ func NewMetricServer(cfg MetricsConfig) (*httputils.Server, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promHTTPHandler)
 
-	return httputils.NewServer("metrics", cfg.Port, mux)
+	return webtools.NewServer("metrics", cfg.Port, mux)
 }
