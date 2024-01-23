@@ -50,6 +50,18 @@ func (e *ExpiringStorage[K, V]) Len() int {
 	return len(e.values)
 }
 
+func (e *ExpiringStorage[K, V]) Keys() []K {
+	e.mux.RLock()
+	defer e.mux.RUnlock()
+
+	var keys []K
+	for key := range e.values {
+		key := key
+		keys = append(keys, key)
+	}
+	return keys
+}
+
 func (e *ExpiringStorage[K, V]) cleanup() {
 	now := time.Now()
 	e.mux.Lock()
