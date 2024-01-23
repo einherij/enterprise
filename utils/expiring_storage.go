@@ -26,7 +26,7 @@ func NewExpiringStorage[K comparable, V any](expirationTimeout time.Duration, cl
 	}
 }
 
-func (e *ExpiringStorage[K, V]) Add(key K, value V) {
+func (e *ExpiringStorage[K, V]) Set(key K, value V) {
 	e.mux.Lock()
 	defer e.mux.Unlock()
 
